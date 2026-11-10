@@ -90,41 +90,17 @@ jobs:
     if: ${{ always() }}
     needs: check
     runs-on: ubuntu-26.04
-    permissions:
-      contents: read
-    outputs:
-      generator: ${{ steps.filter.outputs.generator }}
+    permissions: {}
     steps:
       - name: Verify build and test results
         env:
           CHECK_RESULT: ${{ needs.check.result }}
         run: test "$CHECK_RESULT" = success
 
-      - name: Checkout
-        if: github.event_name == 'push'
-        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
-        with:
-          persist-credentials: false
-
-      - name: Check for generator changes
-        if: github.event_name == 'push'
-        id: filter
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        with:
-          # Compare the complete push, including pushes containing multiple commits.
-          base: ${{ github.event.before }}
-          filters: |
-            generator:
-              - '*.py'
-              - 'Dockerfile'
-              - 'dependencies/**'
-              - '.github/workflows/**'
-              - 'tests/**'
-
   publish:
     needs: automerge-gate
-    # All generator, runtime, and CI dependency changes publish after checks pass.
-    if: ${{ vars.SBOM_PUBLISH_ENABLED == 'true' && ((github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.automerge-gate.outputs.generator == 'true') || (github.event_name == 'workflow_dispatch' && (inputs.publish || (inputs.publish_latest && github.ref == 'refs/heads/main')))) }}
+    # Every push to main publishes after checks pass, including documentation changes.
+    if: ${{ vars.SBOM_PUBLISH_ENABLED == 'true' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.publish || (inputs.publish_latest && github.ref == 'refs/heads/main')))) }}
     runs-on: ubuntu-26.04
     permissions:
       contents: read

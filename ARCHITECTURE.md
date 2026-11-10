@@ -146,8 +146,7 @@ When publication is disabled, checks still run. With publication enabled:
 | Trigger | Result |
 | --- | --- |
 | Pull request | Checks only |
-| Push to `main` changing root Python files, `Dockerfile`, `dependencies/**`, `tests/**`, or `.github/workflows/**` | Publish or reuse commit image; promote the checked digest to `latest` |
-| Documentation-only or Renovate-configuration-only push to `main` | Checks only |
+| Any push to `main`, including documentation and Renovate configuration | Publish or reuse commit image; promote the checked digest to `latest` |
 | Manual dispatch, `publish=false`, `publish_latest=false` | Checks only |
 | Manual dispatch, `publish=true`, `publish_latest=false` | Publish or reuse commit image; promote to `test` |
 | Manual dispatch on `main`, `publish_latest=true` | Force a checked publication to `latest`, including runtime maintenance |
