@@ -139,18 +139,15 @@ docker buildx imagetools inspect "$IMAGE" \
   --format '{{ json (index .Provenance "linux/amd64").SLSA }}'
 ```
 
-If the publisher also supplies separately signed SLSA provenance, verify it
-against the expected source repository and branch:
+The `.SLSA` field exposes BuildKit's SLSA-format provenance. Inspecting it shows
+build details; it does not by itself verify the publisher. Verify the image
+index with Cosign as shown above. Its signature binds the platform manifests
+and their attached SBOM and provenance attestations.
 
-```bash
-slsa-verifier verify-image "$IMAGE" \
-  --source-uri github.com/OWNER/REPO \
-  --source-branch main
-```
-
-Separate signed SLSA provenance is a publisher responsibility; using this
-scanner does not create it. Mirrors must preserve the relevant attestations as
-well as the image index.
+This is the approach used by `cloudnative-pg/postgres-containers` and by the
+generator image itself. A separate SLSA-generator workflow is not needed to
+match that project. See the [architecture rationale](ARCHITECTURE.md#signing-and-provenance-design)
+for the distinction and design choice.
 
 ### Report vulnerabilities and licenses
 
@@ -259,6 +256,33 @@ files in the builder; the builder's own Python dependencies are not available.
 Without a hook, the inventory is unchanged. Hook errors or invalid resulting
 SPDX fail the build. Keep required license notices in the final image; adding a
 package declaration does not copy notice files there.
+
+## Verify the generator image
+
+The generator image itself carries a BuildKit SPDX SBOM and SLSA-format
+`mode=max` provenance as OCI artifacts. Published images are signed with Cosign using
+GitHub Actions OIDC, following the same approach as
+[Postgres containers](https://github.com/cloudnative-pg/postgres-containers).
+Use the same inspection commands with the generator image reference:
+
+```bash
+IMAGE='ghcr.io/cnpg-extensions/cnpg-sbom-generator@sha256:<checked-index-digest>'
+
+cosign verify "$IMAGE" \
+  --certificate-identity='https://github.com/cnpg-extensions/cnpg-sbom-generator/.github/workflows/sbom-generator.yml@refs/heads/main' \
+  --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+
+docker buildx imagetools inspect "$IMAGE" \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX }}'
+
+docker buildx imagetools inspect "$IMAGE" \
+  --format '{{ json (index .Provenance "linux/amd64").SLSA }}'
+```
+
+Use the publisher's actual workflow identity for images built in a fork or on
+another branch. Older images retain the identity and attestation format of the
+workflow that published them. These commands match the Postgres containers
+workflow, with only the image reference and publisher identity changed.
 
 ## Further reading
 

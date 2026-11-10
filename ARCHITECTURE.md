@@ -99,7 +99,8 @@ docker run --rm --entrypoint python3 \
   cnpg-sbom-generator:local -m unittest discover -s tests
 ```
 
-CI builds and tests on native AMD64 and ARM64 runners. Integration checks exercise
+CI uses one AMD64 runner and QEMU to build Linux AMD64 and ARM64 images.
+Unit and integration tests run only on AMD64. Integration checks exercise
 real BuildKit attestations, SPDX validation, package ownership, custom hooks,
 Grype, and Grant.
 
@@ -123,8 +124,8 @@ SBOM at that path. See the [user guide](README.md#verify-the-image-and-extract-i
 for publisher verification.
 
 The validator accepts extracted SPDX or the generator's in-toto statement and
-exits nonzero on invalid output. Native AMD64 and ARM64 CI checks also build the
-scanner and exercise a real BuildKit attestation, Debian notice ownership, hook
+exits nonzero on invalid output. The AMD64 CI checks exercise a real BuildKit
+attestation, Debian notice ownership, hook
 augmentation, Grype distribution detection, and Grant license reporting.
 
 See the [README](README.md#inspect-an-image) for image inspection commands.
@@ -139,39 +140,69 @@ tags retain individual builds; there are no major/minor releases.
 
 ### Publication
 
-Publication requires the repository variable `SBOM_PUBLISH_ENABLED=true`.
-The workflow publishes to `ghcr.io/<repository-owner>/cnpg-sbom-generator`.
-When publication is disabled, checks still run. With publication enabled:
+Every successful push to `main` publishes to
+`ghcr.io/<repository-owner>/cnpg-sbom-generator`. Pull requests and manual runs
+without a publication option only build and test:
 
 | Trigger | Result |
 | --- | --- |
 | Pull request | Checks only |
-| Push to `main` changing root Python files, `Dockerfile`, `dependencies/**`, `tests/**`, or `.github/workflows/**` | Publish or reuse commit image; promote the checked digest to `latest` |
-| Documentation-only or Renovate-configuration-only push to `main` | Checks only |
+| Any push to `main`, including documentation and Renovate configuration | Publish or reuse commit image; promote the checked digest to `latest` |
 | Manual dispatch, `publish=false`, `publish_latest=false` | Checks only |
 | Manual dispatch, `publish=true`, `publish_latest=false` | Publish or reuse commit image; promote to `test` |
 | Manual dispatch on `main`, `publish_latest=true` | Force a checked publication to `latest`, including runtime maintenance |
 
-[The workflow](.github/workflows/sbom-generator.yml) runs unit and
-BuildKit/SPDX/Grype/Grant checks on native AMD64 and ARM64 runners, publishes a
-two-platform image, verifies its platform configurations and source labels, and
-smoke-tests the published digest on AMD64 before promotion. The generator image
-includes per-platform BuildKit `mode=max` provenance and a default-scanner SPDX
-SBOM. The publish job signs the checked image index with Cosign before promotion;
-this binds the platform images and their attestations to the publishing workflow.
-This does not provide `slsa-verifier` verification for the generator itself.
+[The workflow](.github/workflows/sbom-generator.yml) has one `Build and test`
+job. It builds AMD64 and ARM64 together using QEMU, then runs unit tests and
+BuildKit/SPDX/Grype/Grant integration checks on the AMD64 image by digest.
+There is no second build for publication.
 
-Publication is serialized. Failed checks leave aliases unchanged; manual test
-publication never moves `latest`. [release.py](release.py) reuses commit tags and
-verifies alias digests. A dependency rebuild requires a new commit.
+For pull requests and checks-only runs, the image stays in the job's disposable
+local registry. Publishing runs build or reuse a `sha-<full-commit>` image in
+GHCR, verify both platform configurations and source labels, and test that exact
+digest. The commit image can exist before tests pass; only a successful test run
+proceeds to Cosign signing and promotion to `latest` or `test`.
+
+### Signing and provenance design
+
+We deliberately match the signing and attestation approach in
+[cloudnative-pg/postgres-containers](https://github.com/cloudnative-pg/postgres-containers):
+
+- BuildKit generates a default-scanner SPDX SBOM and SLSA-format provenance
+  with `mode=max` for each platform.
+- Image export uses `type=image,oci-mediatypes=true,oci-artifact=true`, matching
+  the reference project's [build configuration](https://github.com/cloudnative-pg/postgres-containers/blob/main/docker-bake.hcl).
+- Cosign signs the tested image index digest using GitHub Actions OIDC, matching
+  its [signing workflow](https://github.com/cloudnative-pg/postgres-containers/blob/main/.github/workflows/bake_targets.yml).
+  The index binds the platform images and their attached attestations.
+
+The reason is compatibility and a clear example for consumers: the generator
+image should demonstrate the same SBOM, provenance, and signature conventions
+it recommends. Users can use the same Docker Buildx inspection and Cosign
+verification commands, substituting image references and publisher identities.
+Generating these attestations during the existing build also keeps the workflow
+to one job and avoids a second provenance-generation system.
+
+BuildKit already supplies SLSA-format provenance; the absence of a separate
+SLSA-generator job does not mean provenance is missing. Such a job would add
+independently generated and signed provenance for `slsa-verifier verify-image`.
+That would be an additional assurance mechanism, not a requirement for matching
+the Postgres containers workflow. We do not claim that verification capability
+or a particular SLSA Build Level from BuildKit provenance and Cosign signing
+alone. Reconsider a separate generator if consumers require that additional
+assurance, rather than adding it solely for compatibility.
 
 ### Release promotion
 
-The publish job is serialized. Once its digest passes checks, a `main` push
-updates `latest` even if unrelated commits have since advanced `main`.
-`release.py` verifies the immutable commit tag and promoted alias against the
-checked digest. GitHub does not guarantee queue order, so serialization alone
-does not enforce source-commit order for publications.
+Main and manual runs are serialized and are not cancelled by newer runs. Pull
+requests have separate concurrency groups so they do not interrupt releases.
+Failed checks leave aliases unchanged; manual test publication never moves
+`latest`. [release.py](release.py) reuses commit tags and verifies alias digests.
+A dependency rebuild requires a new commit.
+
+Once its digest passes checks, a `main` push updates `latest` even if unrelated
+commits have since advanced `main`. GitHub does not guarantee queue order, so
+serialization alone does not enforce source-commit order for publications.
 
 ### Testing from a branch
 
@@ -217,9 +248,12 @@ batches retain automerge after required checks pass; a batch containing a major
 update requires manual merging. GitHub can complete automerge after the window
 closes.
 
-Each dependency batch builds and tests the generator on both architectures.
+Each dependency batch builds the generator for AMD64 and ARM64 using QEMU and
+tests it on AMD64 only. Require the `Build and test` check in branch protection.
+Signing and promotion run only after tests pass within that job. ARM64 runtime
+tests are not part of this workflow.
 After merging, all dependency changes—including Python, Debian packages,
-`spdx-tools`, and CI tools—trigger checked publication when publishing is enabled.
+`spdx-tools`, and CI tools—trigger checked publication.
 There are no runtime-only publication exclusions. The window batches updates;
 it is not a hard limit of one CI run or publication per week. Updates within the
 window, rebases, and the merge to `main` can trigger additional runs.

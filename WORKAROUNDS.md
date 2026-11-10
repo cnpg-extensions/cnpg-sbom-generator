@@ -1,16 +1,4 @@
-# Workarounds
-
-## Migration: temporary publication gate
-
-- **Purpose:** the `SBOM_PUBLISH_ENABLED` repository variable exists only for
-  migration from `postgres-extensions-containers` to this standalone repository.
-  The publish job in [.github/workflows/sbom-generator.yml](.github/workflows/sbom-generator.yml)
-  requires the value `true` to prevent overlapping publishers during the handoff.
-- **Remove when:** the migration is complete and the old publisher is permanently
-  retired. Remove the variable check from the workflow, delete the repository
-  variable, and clean up references to the flag in documentation and this entry.
-
-## Dependency workarounds
+# Dependency workarounds
 
 This register records dependency workarounds and adaptations needed to preserve
 the [compatibility goal](README.md#compatibility) with

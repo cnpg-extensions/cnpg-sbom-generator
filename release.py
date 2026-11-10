@@ -52,6 +52,7 @@ def build(image, revision, repository, output):
             "docker", "buildx", "build", "--platform", "linux/amd64,linux/arm64",
             "--provenance=mode=max",
             "--sbom=true",
+            "--output", "type=image,oci-mediatypes=true,oci-artifact=true",
             "--build-arg", f"SBOM_GENERATOR_REVISION={revision}",
             "--label", f"org.opencontainers.image.source=https://github.com/{repository}",
             "--tag", reference, "--metadata-file", str(output / "build.json"),
