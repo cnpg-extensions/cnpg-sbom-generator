@@ -140,9 +140,9 @@ tags retain individual builds; there are no major/minor releases.
 
 ### Publication
 
-Publication requires the repository variable `SBOM_PUBLISH_ENABLED=true`.
-The workflow publishes to `ghcr.io/<repository-owner>/cnpg-sbom-generator`.
-When publication is disabled, checks still run. With publication enabled:
+Every successful push to `main` publishes to
+`ghcr.io/<repository-owner>/cnpg-sbom-generator`. Pull requests and manual runs
+without a publication option only build and test:
 
 | Trigger | Result |
 | --- | --- |
@@ -229,7 +229,7 @@ tests it on AMD64 only. Require the `Build and test` check in branch protection.
 Signing and promotion run only after tests pass within that job. ARM64 runtime
 tests are not part of this workflow.
 After merging, all dependency changes—including Python, Debian packages,
-`spdx-tools`, and CI tools—trigger checked publication when publishing is enabled.
+`spdx-tools`, and CI tools—trigger checked publication.
 There are no runtime-only publication exclusions. The window batches updates;
 it is not a hard limit of one CI run or publication per week. Updates within the
 window, rebases, and the merge to `main` can trigger additional runs.

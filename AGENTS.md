@@ -29,8 +29,7 @@ Existing integration tests cover BuildKit/SPDX/Grype/Grant behavior; they do not
 prove complete parity with every image and publishing workflow in the reference
 project. Distinguish the compatibility goal from verified behavior when reporting
 results. Documentation-only changes need local documentation checks; CI still builds
-and tests every change and publishes successful pushes to `main` when publication
-is enabled.
+and tests every change and publishes successful pushes to `main`.
 
 Keep these instructions aligned with the [README compatibility goal](README.md#compatibility)
 and the [architecture compatibility contract](ARCHITECTURE.md#compatibility-contract).

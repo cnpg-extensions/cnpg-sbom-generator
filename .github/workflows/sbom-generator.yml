@@ -35,7 +35,7 @@ jobs:
       id-token: write
     env:
       SBOM_SMOKE_PLATFORM: linux/amd64
-      PUBLISH: ${{ vars.SBOM_PUBLISH_ENABLED == 'true' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.publish || (inputs.publish_latest && github.ref == 'refs/heads/main')))) }}
+      PUBLISH: ${{ (github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.publish || (inputs.publish_latest && github.ref == 'refs/heads/main'))) }}
     concurrency:
       group: ${{ github.event_name == 'pull_request' && format('sbom-generator-pr-{0}', github.event.pull_request.number) || 'sbom-generator-publish' }}
       cancel-in-progress: ${{ github.event_name == 'pull_request' }}
