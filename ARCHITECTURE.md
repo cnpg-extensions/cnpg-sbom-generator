@@ -163,12 +163,34 @@ GHCR, verify both platform configurations and source labels, and test that exact
 digest. The commit image can exist before tests pass; only a successful test run
 proceeds to Cosign signing and promotion to `latest` or `test`.
 
-Every build uses `type=image,oci-mediatypes=true,oci-artifact=true`, matching
-[Postgres containers](https://github.com/cloudnative-pg/postgres-containers/blob/main/docker-bake.hcl),
-and includes per-platform BuildKit `mode=max` provenance and a default-scanner
-SPDX SBOM. Cosign signs the checked image index, binding the
-platform images and their attestations to the workflow. This does not provide
-`slsa-verifier` verification for the generator itself.
+### Signing and provenance design
+
+We deliberately match the signing and attestation approach in
+[cloudnative-pg/postgres-containers](https://github.com/cloudnative-pg/postgres-containers):
+
+- BuildKit generates a default-scanner SPDX SBOM and SLSA-format provenance
+  with `mode=max` for each platform.
+- Image export uses `type=image,oci-mediatypes=true,oci-artifact=true`, matching
+  the reference project's [build configuration](https://github.com/cloudnative-pg/postgres-containers/blob/main/docker-bake.hcl).
+- Cosign signs the tested image index digest using GitHub Actions OIDC, matching
+  its [signing workflow](https://github.com/cloudnative-pg/postgres-containers/blob/main/.github/workflows/bake_targets.yml).
+  The index binds the platform images and their attached attestations.
+
+The reason is compatibility and a clear example for consumers: the generator
+image should demonstrate the same SBOM, provenance, and signature conventions
+it recommends. Users can use the same Docker Buildx inspection and Cosign
+verification commands, substituting image references and publisher identities.
+Generating these attestations during the existing build also keeps the workflow
+to one job and avoids a second provenance-generation system.
+
+BuildKit already supplies SLSA-format provenance; the absence of a separate
+SLSA-generator job does not mean provenance is missing. Such a job would add
+independently generated and signed provenance for `slsa-verifier verify-image`.
+That would be an additional assurance mechanism, not a requirement for matching
+the Postgres containers workflow. We do not claim that verification capability
+or a particular SLSA Build Level from BuildKit provenance and Cosign signing
+alone. Reconsider a separate generator if consumers require that additional
+assurance, rather than adding it solely for compatibility.
 
 ### Release promotion
 

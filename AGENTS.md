@@ -33,8 +33,14 @@ and attestation conventions:
   changing only image references and publisher identities.
 
 Keep the README's generator verification examples aligned with this behavior.
-BuildKit's SLSA-format provenance is not the separate signed provenance used by
-`slsa-verifier verify-image`; do not imply that additional capability exists.
+The deliberate design is BuildKit's SLSA-format provenance plus a Cosign image
+index signature, matching Postgres containers. This provides the same tools and
+user commands while keeping a single build job. Do not add a separate
+SLSA-generator job merely to match the reference project: it would introduce an
+additional assurance mechanism, not fill a missing provenance feature. Revisit
+that choice only for a concrete consumer requirement. Do not claim
+`slsa-verifier verify-image` support or a particular SLSA Build Level from the
+current mechanism alone. See the [design rationale](ARCHITECTURE.md#signing-and-provenance-design).
 
 ## Validating changes
 
