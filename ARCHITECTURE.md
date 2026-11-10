@@ -152,26 +152,33 @@ When publication is disabled, checks still run. With publication enabled:
 | Manual dispatch, `publish=true`, `publish_latest=false` | Publish or reuse commit image; promote to `test` |
 | Manual dispatch on `main`, `publish_latest=true` | Force a checked publication to `latest`, including runtime maintenance |
 
-[The workflow](.github/workflows/sbom-generator.yml) runs unit and
-BuildKit/SPDX/Grype/Grant checks on AMD64, builds ARM64 using QEMU, publishes a
-two-platform image, verifies its platform configurations and source labels, and
-smoke-tests the published digest on AMD64 before promotion. The generator image
-includes per-platform BuildKit `mode=max` provenance and a default-scanner SPDX
-SBOM. The publish job signs the checked image index with Cosign before promotion;
-this binds the platform images and their attestations to the publishing workflow.
-This does not provide `slsa-verifier` verification for the generator itself.
+[The workflow](.github/workflows/sbom-generator.yml) has one `Build and test`
+job. It builds AMD64 and ARM64 together using QEMU, then runs unit tests and
+BuildKit/SPDX/Grype/Grant integration checks on the AMD64 image by digest.
+There is no second build for publication.
 
-Publication is serialized. Failed checks leave aliases unchanged; manual test
-publication never moves `latest`. [release.py](release.py) reuses commit tags and
-verifies alias digests. A dependency rebuild requires a new commit.
+For pull requests and checks-only runs, the image stays in the job's disposable
+local registry. Publishing runs build or reuse a `sha-<full-commit>` image in
+GHCR, verify both platform configurations and source labels, and test that exact
+digest. The commit image can exist before tests pass; only a successful test run
+proceeds to Cosign signing and promotion to `latest` or `test`.
+
+Every build includes per-platform BuildKit `mode=max` provenance and a
+default-scanner SPDX SBOM. Cosign signs the checked image index, binding the
+platform images and their attestations to the workflow. This does not provide
+`slsa-verifier` verification for the generator itself.
 
 ### Release promotion
 
-The publish job is serialized. Once its digest passes checks, a `main` push
-updates `latest` even if unrelated commits have since advanced `main`.
-`release.py` verifies the immutable commit tag and promoted alias against the
-checked digest. GitHub does not guarantee queue order, so serialization alone
-does not enforce source-commit order for publications.
+Main and manual runs are serialized and are not cancelled by newer runs. Pull
+requests have separate concurrency groups so they do not interrupt releases.
+Failed checks leave aliases unchanged; manual test publication never moves
+`latest`. [release.py](release.py) reuses commit tags and verifies alias digests.
+A dependency rebuild requires a new commit.
+
+Once its digest passes checks, a `main` push updates `latest` even if unrelated
+commits have since advanced `main`. GitHub does not guarantee queue order, so
+serialization alone does not enforce source-commit order for publications.
 
 ### Testing from a branch
 
@@ -218,9 +225,9 @@ update requires manual merging. GitHub can complete automerge after the window
 closes.
 
 Each dependency batch builds the generator for AMD64 and ARM64 using QEMU and
-tests it on AMD64 only. Require the `Build and test` check in branch protection; publication depends on
-its success. ARM64 runtime tests
-are not part of this workflow.
+tests it on AMD64 only. Require the `Build and test` check in branch protection.
+Signing and promotion run only after tests pass within that job. ARM64 runtime
+tests are not part of this workflow.
 After merging, all dependency changes—including Python, Debian packages,
 `spdx-tools`, and CI tools—trigger checked publication when publishing is enabled.
 There are no runtime-only publication exclusions. The window batches updates;
