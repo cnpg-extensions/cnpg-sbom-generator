@@ -90,17 +90,41 @@ jobs:
     if: ${{ always() }}
     needs: check
     runs-on: ubuntu-26.04
-    permissions: {}
+    permissions:
+      contents: read
+    outputs:
+      generator: ${{ steps.filter.outputs.generator }}
     steps:
       - name: Verify build and test results
         env:
           CHECK_RESULT: ${{ needs.check.result }}
         run: test "$CHECK_RESULT" = success
 
+      - name: Checkout
+        if: github.event_name == 'push'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Check for generator changes
+        if: github.event_name == 'push'
+        id: filter
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          # Compare the complete push, including pushes containing multiple commits.
+          base: ${{ github.event.before }}
+          filters: |
+            generator:
+              - '*.py'
+              - 'Dockerfile'
+              - 'dependencies/**'
+              - '.github/workflows/**'
+              - 'tests/**'
+
   publish:
-    needs: check
+    needs: automerge-gate
     # All generator, runtime, and CI dependency changes publish after checks pass.
-    if: ${{ vars.SBOM_PUBLISH_ENABLED == 'true' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.publish || (inputs.publish_latest && github.ref == 'refs/heads/main')))) }}
+    if: ${{ vars.SBOM_PUBLISH_ENABLED == 'true' && ((github.event_name == 'push' && github.ref == 'refs/heads/main' && needs.automerge-gate.outputs.generator == 'true') || (github.event_name == 'workflow_dispatch' && (inputs.publish || (inputs.publish_latest && github.ref == 'refs/heads/main')))) }}
     runs-on: ubuntu-26.04
     permissions:
       contents: read
@@ -121,35 +145,17 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Check for generator changes
-        if: github.event_name == 'push'
-        id: filter
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
-        with:
-          # Compare the complete push, including pushes containing multiple commits.
-          base: ${{ github.event.before }}
-          filters: |
-            generator:
-              - '*.py'
-              - 'Dockerfile'
-              - 'dependencies/**'
-              - '.github/workflows/**'
-              - 'tests/**'
-
       - name: Set up QEMU
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.generator == 'true'
         uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
         with:
           platforms: linux/arm64
 
       - name: Set up Docker Buildx
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.generator == 'true'
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
         with:
           driver-opts: network=host
 
       - name: Log in to GHCR
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.generator == 'true'
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4
         with:
           registry: ghcr.io
@@ -157,7 +163,6 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Select publication destination
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.generator == 'true'
         id: destination
         env:
           EVENT_NAME: ${{ github.event_name }}
@@ -168,7 +173,6 @@ jobs:
           echo "alias=$alias" >> "$GITHUB_OUTPUT"
 
       - name: Publish or reuse commit image
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.generator == 'true'
         env:
           IMAGE: ${{ steps.destination.outputs.image }}
         run: |
@@ -177,7 +181,6 @@ jobs:
             --output "$RUNNER_TEMP/sbom-release"
 
       - name: Check published digest with BuildKit
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.generator == 'true'
         env:
           IMAGE: ${{ steps.destination.outputs.image }}
         run: |
@@ -185,17 +188,14 @@ jobs:
           bash tests/integration/buildkit-smoke.sh "$IMAGE@$digest" "$RUNNER_TEMP/sbom-release/smoke"
 
       - name: Install cosign
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.generator == 'true'
         uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
 
       - name: Sign checked generator image
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.generator == 'true'
         env:
           IMAGE: ${{ steps.destination.outputs.image }}
         run: cosign sign --yes "$IMAGE@$(cat "$RUNNER_TEMP/sbom-release/digest")"
 
       - name: Promote checked digest
-        if: github.event_name == 'workflow_dispatch' || steps.filter.outputs.generator == 'true'
         env:
           IMAGE: ${{ steps.destination.outputs.image }}
           ALIAS: ${{ steps.destination.outputs.alias }}
@@ -205,7 +205,7 @@ jobs:
             --output "$RUNNER_TEMP/sbom-release" --alias "$ALIAS"
 
       - name: Summarize publication
-        if: ${{ always() && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.generator == 'true') }}
+        if: always()
         env:
           IMAGE: ${{ steps.destination.outputs.image }}
           ALIAS: ${{ steps.destination.outputs.alias }}
@@ -227,7 +227,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Save publication evidence
-        if: ${{ always() && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.generator == 'true') }}
+        if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
           name: sbom-generator-publication
