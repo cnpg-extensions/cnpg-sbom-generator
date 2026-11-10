@@ -17,6 +17,27 @@ changes:
   evidence to the shipped payload; consumer workflows generate provenance and
   signatures. Compatibility includes those workflows as well as the scanner.
 
+## The generator image must demonstrate the compatibility contract
+
+Apply the compatibility contract to the generator image itself, not only to the
+SBOMs it produces for consumers. As an SBOM and attestation tool, this repository
+should set an example by following `cloudnative-pg/postgres-containers` signing
+and attestation conventions:
+
+- Export OCI image media types and OCI artifact attestations with
+  `type=image,oci-mediatypes=true,oci-artifact=true`.
+- Include BuildKit's default SPDX SBOM and `mode=max` provenance for each platform.
+- Sign the tested image index digest with Cosign keyless signing through GitHub
+  Actions OIDC before promoting release tags.
+- Keep the same Docker Buildx inspection and Cosign verification commands usable,
+  changing only image references and publisher identities.
+
+Keep the README's generator verification examples aligned with this behavior.
+BuildKit's SLSA-format provenance is not the separate signed provenance used by
+`slsa-verifier verify-image`; do not imply that additional capability exists.
+
+## Validating changes
+
 When changing scanner dependencies, SPDX composition, attestation packaging, or
 release workflows, compare affected documents and commands with the reference
 project. Check Docker Buildx SBOM extraction and provenance inspection, Cosign
