@@ -99,7 +99,8 @@ docker run --rm --entrypoint python3 \
   cnpg-sbom-generator:local -m unittest discover -s tests
 ```
 
-CI builds and tests on native AMD64 and ARM64 runners. Integration checks exercise
+CI uses one AMD64 runner and QEMU to build Linux AMD64 and ARM64 images.
+Unit and integration tests run only on AMD64. Integration checks exercise
 real BuildKit attestations, SPDX validation, package ownership, custom hooks,
 Grype, and Grant.
 
@@ -123,8 +124,8 @@ SBOM at that path. See the [user guide](README.md#verify-the-image-and-extract-i
 for publisher verification.
 
 The validator accepts extracted SPDX or the generator's in-toto statement and
-exits nonzero on invalid output. Native AMD64 and ARM64 CI checks also build the
-scanner and exercise a real BuildKit attestation, Debian notice ownership, hook
+exits nonzero on invalid output. The AMD64 CI checks exercise a real BuildKit
+attestation, Debian notice ownership, hook
 augmentation, Grype distribution detection, and Grant license reporting.
 
 See the [README](README.md#inspect-an-image) for image inspection commands.
@@ -152,7 +153,7 @@ When publication is disabled, checks still run. With publication enabled:
 | Manual dispatch on `main`, `publish_latest=true` | Force a checked publication to `latest`, including runtime maintenance |
 
 [The workflow](.github/workflows/sbom-generator.yml) runs unit and
-BuildKit/SPDX/Grype/Grant checks on native AMD64 and ARM64 runners, publishes a
+BuildKit/SPDX/Grype/Grant checks on AMD64, builds ARM64 using QEMU, publishes a
 two-platform image, verifies its platform configurations and source labels, and
 smoke-tests the published digest on AMD64 before promotion. The generator image
 includes per-platform BuildKit `mode=max` provenance and a default-scanner SPDX
@@ -216,7 +217,10 @@ batches retain automerge after required checks pass; a batch containing a major
 update requires manual merging. GitHub can complete automerge after the window
 closes.
 
-Each dependency batch builds and tests the generator on both architectures.
+Each dependency batch builds the generator for AMD64 and ARM64 using QEMU and
+tests it on AMD64 only. Require the `Build and test` check in branch protection; publication depends on
+its success. ARM64 runtime tests
+are not part of this workflow.
 After merging, all dependency changes—including Python, Debian packages,
 `spdx-tools`, and CI tools—trigger checked publication when publishing is enabled.
 There are no runtime-only publication exclusions. The window batches updates;

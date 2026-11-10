@@ -27,21 +27,14 @@ env:
 
 jobs:
   check:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - arch: amd64
-            runner: ubuntu-26.04
-          - arch: arm64
-            runner: ubuntu-26.04-arm
-    runs-on: ${{ matrix.runner }}
+    name: Build and test
+    runs-on: ubuntu-26.04
     env:
-      SBOM_SMOKE_PLATFORM: linux/${{ matrix.arch }}
+      SBOM_SMOKE_PLATFORM: linux/amd64
     permissions:
       contents: read
     concurrency:
-      group: sbom-generator-check-${{ github.ref }}-${{ matrix.arch }}
+      group: sbom-generator-check-${{ github.ref }}
       cancel-in-progress: true
     services:
       registry:
@@ -55,14 +48,19 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@99012661954931238ded8c8b007157a8430204e1 # v4
+        with:
+          platforms: linux/arm64
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4
         with:
           driver-opts: network=host
 
-      - name: Build local generator
+      - name: Build multiplatform generator
         run: |
-          docker buildx build --platform "$SBOM_SMOKE_PLATFORM" \
+          docker buildx build --platform linux/amd64,linux/arm64 \
             --build-arg "SBOM_GENERATOR_REVISION=$GITHUB_SHA" \
             --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
             --tag localhost:5000/cnpg-sbom-generator:check --push .
@@ -81,24 +79,13 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: sbom-generator-check-${{ matrix.arch }}
+          name: sbom-generator-check-amd64
           path: ${{ runner.temp }}/sbom-check
           if-no-files-found: ignore
 
-  automerge-gate:
-    name: Automerge gate
-    if: ${{ always() }}
-    needs: check
-    runs-on: ubuntu-26.04
-    permissions: {}
-    steps:
-      - name: Verify build and test results
-        env:
-          CHECK_RESULT: ${{ needs.check.result }}
-        run: test "$CHECK_RESULT" = success
-
   publish:
-    needs: automerge-gate
+    name: Publish
+    needs: check
     # Every push to main publishes after checks pass, including documentation changes.
     if: ${{ vars.SBOM_PUBLISH_ENABLED == 'true' && ((github.event_name == 'push' && github.ref == 'refs/heads/main') || (github.event_name == 'workflow_dispatch' && (inputs.publish || (inputs.publish_latest && github.ref == 'refs/heads/main')))) }}
     runs-on: ubuntu-26.04
