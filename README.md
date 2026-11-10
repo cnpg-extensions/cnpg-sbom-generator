@@ -260,6 +260,33 @@ Without a hook, the inventory is unchanged. Hook errors or invalid resulting
 SPDX fail the build. Keep required license notices in the final image; adding a
 package declaration does not copy notice files there.
 
+## Verify the generator image
+
+The generator image itself carries a BuildKit SPDX SBOM and `mode=max`
+provenance as OCI artifacts. Published images are signed with Cosign using
+GitHub Actions OIDC, following the same approach as
+[Postgres containers](https://github.com/cloudnative-pg/postgres-containers).
+Use the same inspection commands with the generator image reference:
+
+```bash
+IMAGE='ghcr.io/cnpg-extensions/cnpg-sbom-generator@sha256:<checked-index-digest>'
+
+cosign verify "$IMAGE" \
+  --certificate-identity='https://github.com/cnpg-extensions/cnpg-sbom-generator/.github/workflows/sbom-generator.yml@refs/heads/main' \
+  --certificate-oidc-issuer='https://token.actions.githubusercontent.com'
+
+docker buildx imagetools inspect "$IMAGE" \
+  --format '{{ json (index .SBOM "linux/amd64").SPDX }}'
+
+docker buildx imagetools inspect "$IMAGE" \
+  --format '{{ json (index .Provenance "linux/amd64").SLSA }}'
+```
+
+Use the publisher's actual workflow identity for images built in a fork or on
+another branch. Older images retain the identity and attestation format of the
+workflow that published them. BuildKit provenance is distinct from the separate
+signed provenance required by `slsa-verifier verify-image`.
+
 ## Further reading
 
 - [Architecture and implementation](ARCHITECTURE.md)

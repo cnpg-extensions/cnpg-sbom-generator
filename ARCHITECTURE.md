@@ -163,8 +163,10 @@ GHCR, verify both platform configurations and source labels, and test that exact
 digest. The commit image can exist before tests pass; only a successful test run
 proceeds to Cosign signing and promotion to `latest` or `test`.
 
-Every build includes per-platform BuildKit `mode=max` provenance and a
-default-scanner SPDX SBOM. Cosign signs the checked image index, binding the
+Every build uses `type=image,oci-mediatypes=true,oci-artifact=true`, matching
+[Postgres containers](https://github.com/cloudnative-pg/postgres-containers/blob/main/docker-bake.hcl),
+and includes per-platform BuildKit `mode=max` provenance and a default-scanner
+SPDX SBOM. Cosign signs the checked image index, binding the
 platform images and their attestations to the workflow. This does not provide
 `slsa-verifier` verification for the generator itself.
 
